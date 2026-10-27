@@ -564,53 +564,80 @@
     // Lightning flash (visual)
     flashScreen();
 
-    // Crack: bright transient at strike time — always audible, louder when close
-    {
-      const crack = ctx.createBufferSource();
-      crack.buffer = noiseBuffer(0.5);
-      const cf = ctx.createBiquadFilter();
-      cf.type = "highpass";
-      cf.frequency.value = 1200;
-      const cg = ctx.createGain();
-      const cv = 0.25 + 0.65 * (1 - distance);
-      cg.gain.setValueAtTime(0.0001, t);
-      cg.gain.exponentialRampToValueAtTime(cv, t + 0.01);
-      cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-      crack.connect(cf).connect(cg).connect(layers.thunder.bus);
-      crack.start(t);
-      crack.stop(t + 0.5);
+    // Close strike: a real crack — an instantaneous broadband SNAP, 30-80ms,
+    // with weight in the 100-800Hz body, not a sustained hiss
+    if (distance < 0.6) {
+      crackSnap(t, distance);
     }
 
     // Thunder: arrives after the flash — speed-of-sound delay scaled by distance
     const delay = 0.3 + distance * 3.5;
-    rumble(t + delay, distance);
+    rollingThunder(t + delay, distance);
   }
 
-  function rumble(t, distance) {
-    const dur = 2.5 + Math.random() * 3;
+  // The snap of a close strike: very short, huge bandwidth, fast decay
+  function crackSnap(t, distance) {
+    const snap = ctx.createBufferSource();
+    snap.buffer = noiseBuffer(0.15);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 450;
+    bp.Q.value = 0.4;
+    const g = ctx.createGain();
+    const peak = 1.1 * (1.15 - distance);
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    snap.connect(bp).connect(g).connect(layers.thunder.bus);
+    snap.start(t);
+    snap.stop(t + 0.12);
+    // sub-thump for the air displacement
+    const thump = ctx.createOscillator();
+    const tg = ctx.createGain();
+    thump.type = "sine";
+    thump.frequency.setValueAtTime(90, t);
+    thump.frequency.exponentialRampToValueAtTime(38, t + 0.25);
+    tg.gain.setValueAtTime(0.5 * (1.1 - distance), t);
+    tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    thump.connect(tg).connect(layers.thunder.bus);
+    thump.start(t);
+    thump.stop(t + 0.35);
+  }
+
+  // Real thunder is not one swell: it's several booms from different points
+  // along the lightning channel, arriving staggered, overlapping, rolling
+  function rollingThunder(t, distance) {
+    const booms = 3 + Math.floor(Math.random() * 4);
+    let bt = t;
+    for (let i = 0; i < booms; i++) {
+      boom(bt, distance, i === 0);
+      bt += 0.25 + Math.random() * 0.8;
+    }
+    // long trailing roll for distant strikes
+    if (distance > 0.55) {
+      boom(bt + 0.4, distance, false, 3.5);
+    }
+  }
+
+  function boom(t, distance, first, extraDur) {
+    const dur = extraDur || (first ? 0.9 + Math.random() * 0.8 : 1.4 + Math.random() * 1.6);
     const src = ctx.createBufferSource();
-    src.buffer = noiseBuffer(Math.ceil(dur) + 1);
+    src.buffer = noiseBuffer(Math.ceil(dur) + 0.5);
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    // keep enough midrange (150-400Hz) to be audible on small speakers;
-    // far thunder rolls off more
-    const fHigh = 420 - distance * 260;
+    // enough midrange to be audible on phone speakers; rolls off with distance
+    const fHigh = 480 - distance * 300;
     filter.frequency.setValueAtTime(fHigh, t);
-    filter.frequency.exponentialRampToValueAtTime(45 + (1 - distance) * 40, t + dur);
-    filter.Q.value = 0.8;
+    filter.frequency.exponentialRampToValueAtTime(50 + (1 - distance) * 45, t + dur);
+    filter.Q.value = 0.7;
     const g = ctx.createGain();
+    const peak = first ? 0.95 * (1.15 - distance) : 0.5 + Math.random() * 0.3;
     g.gain.setValueAtTime(0.0001, t);
-    if (distance < 0.5) {
-      // close thunder hits hard
-      g.gain.exponentialRampToValueAtTime(0.95 * (1.2 - distance), t + 0.1);
-    } else {
-      // distant thunder swells in
-      g.gain.exponentialRampToValueAtTime(0.55, t + dur * 0.3);
-    }
+    g.gain.exponentialRampToValueAtTime(peak, t + (first ? 0.06 : 0.12 + Math.random() * 0.15));
+    g.gain.exponentialRampToValueAtTime(peak * 0.4, t + dur * 0.6);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     src.connect(filter).connect(g);
-    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; g.connect(pan).connect(layers.thunder.bus); }
+    if (pan) { pan.pan.value = Math.random() * 1.4 - 0.7; g.connect(pan).connect(layers.thunder.bus); }
     else g.connect(layers.thunder.bus);
     src.start(t);
     src.stop(t + dur + 0.1);
