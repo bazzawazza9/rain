@@ -564,19 +564,21 @@
     // Lightning flash (visual)
     flashScreen();
 
-    // Crack: bright transient at strike time (louder when close)
-    if (distance < 0.55) {
+    // Crack: bright transient at strike time — always audible, louder when close
+    {
       const crack = ctx.createBufferSource();
       crack.buffer = noiseBuffer(0.5);
       const cf = ctx.createBiquadFilter();
       cf.type = "highpass";
-      cf.frequency.value = 1500;
+      cf.frequency.value = 1200;
       const cg = ctx.createGain();
+      const cv = 0.25 + 0.65 * (1 - distance);
       cg.gain.setValueAtTime(0.0001, t);
-      cg.gain.exponentialRampToValueAtTime(0.9 * (1 - distance), t + 0.01);
-      cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      cg.gain.exponentialRampToValueAtTime(cv, t + 0.01);
+      cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
       crack.connect(cf).connect(cg).connect(layers.thunder.bus);
       crack.start(t);
+      crack.stop(t + 0.5);
     }
 
     // Thunder: arrives after the flash — speed-of-sound delay scaled by distance
@@ -590,17 +592,19 @@
     src.buffer = noiseBuffer(Math.ceil(dur) + 1);
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    // far thunder is deeper and more muffled
-    const fHigh = 160 - distance * 100;
+    // keep enough midrange (150-400Hz) to be audible on small speakers;
+    // far thunder rolls off more
+    const fHigh = 420 - distance * 260;
     filter.frequency.setValueAtTime(fHigh, t);
-    filter.frequency.exponentialRampToValueAtTime(40 + (1 - distance) * 20, t + dur);
-    filter.Q.value = 1;
+    filter.frequency.exponentialRampToValueAtTime(45 + (1 - distance) * 40, t + dur);
+    filter.Q.value = 0.8;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    // close thunder hits hard; distant thunder swells in
     if (distance < 0.5) {
+      // close thunder hits hard
       g.gain.exponentialRampToValueAtTime(0.95 * (1.2 - distance), t + 0.1);
     } else {
+      // distant thunder swells in
       g.gain.exponentialRampToValueAtTime(0.55, t + dur * 0.3);
     }
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
