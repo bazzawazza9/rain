@@ -332,14 +332,15 @@
     dropletBus.gain.value = 0.6;
     dropletBus.connect(rainGain);
 
-    layers.rain = { bus: rainGain, hissGain, lowpass: rainLow, dropletBus };
+    layers.rain = { bus: rainGain, hissGain, hissFilter, lowpass: rainLow, dropletBus };
 
     dropletTimer = setInterval(() => {
       if (!playing || !state.rain.on) return;
       const now = ctx.currentTime;
-      const count = 1 + Math.floor(Math.random() * (1 + state.rain.intensity * 2));
-      for (let i = 0; i < count; i++) droplet(now + Math.random() * 1.2);
-    }, 900);
+      const per = state.rain.surface === "tin" ? 300 : 450;
+      const count = 2 + Math.floor(Math.random() * (2 + state.rain.intensity * 3));
+      for (let i = 0; i < count; i++) droplet(now + Math.random() * (per * 3 / 1000));
+    }, 400);
 
     // ---- Wind ----
     const windGain = ctx.createGain();
@@ -375,14 +376,14 @@
     thunderBus.gain.value = 1;
     thunderBus.connect(masterGain);
     layers.thunder = { bus: thunderBus };
-    const scheduleThunder = () => {
+    const scheduleThunder = (first) => {
       if (thunderTimer) clearTimeout(thunderTimer);
       const freq = state.thunder.level / 100;
       if (!playing || !state.thunder.on || freq <= 0) return;
-      const delay = 8000 + Math.random() * 40000 * (1 - freq);
+      const delay = first ? 800 + Math.random() * 1200 : 6000 + Math.random() * 34000 * (1 - freq);
       thunderTimer = setTimeout(() => {
         if (playing && state.thunder.on) rumble();
-        scheduleThunder();
+        scheduleThunder(false);
       }, delay);
     };
     layers.thunder.schedule = scheduleThunder;
@@ -467,7 +468,7 @@
       osc.frequency.setValueAtTime(f * 1.6, t);
       osc.frequency.exponentialRampToValueAtTime(f * 0.6, t + 0.07);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.035 + iv * 0.01, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.12 + iv * 0.04, t + 0.006);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
       osc.connect(g).connect(bus);
       osc.start(t); osc.stop(t + 0.12);
@@ -475,7 +476,7 @@
       // metallic ping: two detuned partials + tick
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.045 + iv * 0.02, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.14 + iv * 0.05, t + 0.003);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
       [1900, 3100].forEach((base, i) => {
         const osc = ctx.createOscillator();
@@ -501,7 +502,7 @@
       osc.frequency.setValueAtTime(700 + Math.random() * 250, t);
       osc.frequency.exponentialRampToValueAtTime(500 + Math.random() * 150, t + 0.04);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.03, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.11 + iv * 0.03, t + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
       osc.connect(g).connect(bus);
       osc.start(t); osc.stop(t + 0.08);
@@ -515,7 +516,7 @@
       f.Q.value = 1.2;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.025 + iv * 0.01, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.09 + iv * 0.03, t + 0.005);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
       src.connect(f).connect(g).connect(bus);
       src.start(t);
@@ -550,17 +551,35 @@
     fade(masterGain.gain, playing ? state.master / 100 : 0, tc);
 
     if (state.rain.on) {
+      const s = state.rain.surface;
       layers.rain.bus.gain.value = state.rain.level / 100;
       layers.rain.hissGain.gain.value = 0.25 + state.rain.intensity * 0.35;
-      layers.rain.dropletBus.gain.value = 0.2 + state.rain.intensity * 0.5;
+      layers.rain.dropletBus.gain.value = 0.35 + state.rain.intensity * 0.5;
       layers.rain.lowpass.frequency.value = 4000 + state.rain.intensity * 1500;
+      if (s === "tin") {
+        layers.rain.hissFilter.type = "highpass";
+        layers.rain.hissFilter.frequency.value = 1200;
+        layers.rain.hissFilter.Q.value = 0.3;
+      } else if (s === "water") {
+        layers.rain.hissFilter.type = "lowpass";
+        layers.rain.hissFilter.frequency.value = 900;
+        layers.rain.hissFilter.Q.value = 0.4;
+      } else if (s === "window") {
+        layers.rain.hissFilter.type = "lowpass";
+        layers.rain.hissFilter.frequency.value = 1800;
+        layers.rain.hissFilter.Q.value = 0.6;
+      } else {
+        layers.rain.hissFilter.type = "bandpass";
+        layers.rain.hissFilter.frequency.value = 1400;
+        layers.rain.hissFilter.Q.value = 0.5;
+      }
     } else {
       layers.rain.bus.gain.value = 0;
     }
 
     layers.wind.bus.gain.value = state.wind.on ? (state.wind.level / 100) * 0.9 : 0;
     layers.thunder.bus.gain.value = state.thunder.on ? 1 : 0;
-    if (state.thunder.on && playing) layers.thunder.schedule();
+    if (state.thunder.on && playing) layers.thunder.schedule(true);
     layers.fan.bus.gain.value = state.fan.on ? (state.fan.level / 100) * 0.8 : 0;
     layers.ac.bus.gain.value = state.ac.on ? (state.ac.level / 100) * 0.8 : 0;
   }
