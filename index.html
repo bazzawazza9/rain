@@ -302,19 +302,35 @@
     param.setTargetAtTime(target, ctx.currentTime, tc);
   }
 
+  // Build a short impulse response: exponential-decay noise ringing at given partials
+  function makeResonanceIR(sampleRate, seconds, partials, decay) {
+    const len = Math.floor(sampleRate * seconds);
+    const buf = ctx.createBuffer(2, len, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) {
+        const t = i / sampleRate;
+        let v = (Math.random() * 2 - 1) * Math.exp(-decay * t);
+        for (const f of partials) v *= 0.5 + 0.5 * Math.sin(2 * Math.PI * f * t);
+        d[i] = v;
+      }
+    }
+    return buf;
+  }
+
   function setupAudio() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = ctx.createGain();
     masterGain.gain.value = 0;
     masterGain.connect(ctx.destination);
 
-    // ---- Rain ----
+    // ---- Rain: wash (continuous) + impacts (scheduled) + material resonator ----
     const rainGain = ctx.createGain();
     rainGain.gain.value = 0;
     rainGain.connect(masterGain);
 
     const hissSrc = ctx.createBufferSource();
-    hissSrc.buffer = noiseBuffer(2);
+    hissSrc.buffer = noiseBuffer(4);
     hissSrc.loop = true;
     const hissFilter = ctx.createBiquadFilter();
     hissFilter.type = "bandpass";
@@ -332,15 +348,24 @@
     dropletBus.gain.value = 0.6;
     dropletBus.connect(rainGain);
 
-    layers.rain = { bus: rainGain, hissGain, hissFilter, lowpass: rainLow, dropletBus };
+    // Material resonator: impacts excite this; retuned per surface
+    const resonator = ctx.createConvolver();
+    resonator.buffer = makeResonanceIR(ctx.sampleRate, 0.4, [1900, 3100], 3);
+    const resonatorGain = ctx.createGain();
+    resonatorGain.gain.value = 0;
+    dropletBus.connect(resonator).connect(resonatorGain).connect(rainGain);
+
+    layers.rain = { bus: rainGain, hissGain, hissFilter, lowpass: rainLow, dropletBus, resonator, resonatorGain };
 
     dropletTimer = setInterval(() => {
       if (!playing || !state.rain.on) return;
       const now = ctx.currentTime;
-      const per = state.rain.surface === "tin" ? 300 : 450;
-      const count = 2 + Math.floor(Math.random() * (2 + state.rain.intensity * 3));
-      for (let i = 0; i < count; i++) droplet(now + Math.random() * (per * 3 / 1000));
-    }, 400);
+      const s = state.rain.surface;
+      const rate = s === "tin" ? 140 : s === "water" ? 300 : s === "window" ? 400 : 260;
+      const spread = s === "leaves" ? 1.6 : 0.6;
+      const count = s === "water" ? 2 : 3 + Math.floor(Math.random() * (1 + state.rain.intensity * 2));
+      for (let i = 0; i < count; i++) droplet(now + Math.random() * (rate * spread / 1000));
+    }, 200);
 
     // ---- Wind ----
     const windGain = ctx.createGain();
@@ -459,67 +484,74 @@
   function droplet(t) {
     const bus = layers.rain.dropletBus;
     const iv = state.rain.intensity;
+    const amp = 0.5 + iv * 0.25;
     if (state.rain.surface === "water") {
-      // plop: pitch-dropping sine
+      // cavity plop: air bubble pushed into water, pitch rises then hollow body
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
-      const f = 350 + Math.random() * 350;
+      const f = 180 + Math.random() * 200;
       osc.type = "sine";
-      osc.frequency.setValueAtTime(f * 1.6, t);
-      osc.frequency.exponentialRampToValueAtTime(f * 0.6, t + 0.07);
+      osc.frequency.setValueAtTime(f * 0.7, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.045);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.9, t + 0.09);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.12 + iv * 0.04, t + 0.006);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      g.gain.exponentialRampToValueAtTime(0.16 * amp, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      // splash transient: tiny high-frequency shimmer
+      const sp = ctx.createBufferSource();
+      sp.buffer = noiseBuffer(0.03);
+      const spf = ctx.createBiquadFilter();
+      spf.type = "highpass"; spf.frequency.value = 3500;
+      const spg = ctx.createGain();
+      spg.gain.setValueAtTime(0.05 * amp, t);
+      spg.gain.exponentialRampToValueAtTime(0.0001, t + 0.025);
+      sp.connect(spf).connect(spg).connect(bus);
+      sp.start(t);
       osc.connect(g).connect(bus);
-      osc.start(t); osc.stop(t + 0.12);
+      osc.start(t); osc.stop(t + 0.14);
     } else if (state.rain.surface === "tin") {
-      // metallic ping: two detuned partials + tick
+      // hard impact on a thin metal sheet: broadband knock, sheet rings via resonator
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuffer(0.03);
+      const kf = ctx.createBiquadFilter();
+      kf.type = "bandpass";
+      kf.frequency.value = 1400 + Math.random() * 800;
+      kf.Q.value = 0.8;
       const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.14 + iv * 0.05, t + 0.003);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
-      [1900, 3100].forEach((base, i) => {
-        const osc = ctx.createOscillator();
-        osc.type = "sine";
-        osc.frequency.value = base + Math.random() * 400;
-        const og = ctx.createGain();
-        og.gain.value = i === 0 ? 1 : 0.5;
-        osc.connect(og).connect(g);
-        osc.start(t); osc.stop(t + 0.15);
-      });
-      const tick = ctx.createBufferSource();
-      tick.buffer = noiseBuffer(0.02);
-      const tf = ctx.createBiquadFilter();
-      tf.type = "highpass"; tf.frequency.value = 4000;
-      tick.connect(tf).connect(g);
-      tick.start(t); 
-      g.connect(bus);
+      g.gain.setValueAtTime(0.22 * amp, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+      src.connect(kf).connect(g).connect(bus);
+      src.start(t);
     } else if (state.rain.surface === "window") {
-      // glass tap: mid thud + resonant ring
+      // heard from inside: soft thud through glass, faint ring
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(700 + Math.random() * 250, t);
-      osc.frequency.exponentialRampToValueAtTime(500 + Math.random() * 150, t + 0.04);
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(220 + Math.random() * 120, t);
+      osc.frequency.exponentialRampToValueAtTime(140 + Math.random() * 80, t + 0.05);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.11 + iv * 0.03, t + 0.004);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+      g.gain.exponentialRampToValueAtTime(0.13 * amp, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
       osc.connect(g).connect(bus);
-      osc.start(t); osc.stop(t + 0.08);
+      osc.start(t); osc.stop(t + 0.09);
     } else {
-      // leaves: soft noise tap
-      const src = ctx.createBufferSource();
-      src.buffer = noiseBuffer(0.05);
-      const f = ctx.createBiquadFilter();
-      f.type = "bandpass";
-      f.frequency.value = 1200 + Math.random() * 1800;
-      f.Q.value = 1.2;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.09 + iv * 0.03, t + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-      src.connect(f).connect(g).connect(bus);
-      src.start(t);
+      // leaves: irregular dry rustle, multi-tap scrape
+      const taps = 1 + Math.floor(Math.random() * 3);
+      for (let k = 0; k < taps; k++) {
+        const tt = t + k * (0.012 + Math.random() * 0.03);
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuffer(0.04);
+        const f = ctx.createBiquadFilter();
+        f.type = "bandpass";
+        f.frequency.value = 900 + Math.random() * 2600;
+        f.Q.value = 1.5;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, tt);
+        g.gain.exponentialRampToValueAtTime((0.08 + Math.random() * 0.06) * amp, tt + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.04);
+        src.connect(f).connect(g).connect(bus);
+        src.start(tt);
+      }
     }
   }
 
@@ -557,21 +589,32 @@
       layers.rain.dropletBus.gain.value = 0.35 + state.rain.intensity * 0.5;
       layers.rain.lowpass.frequency.value = 4000 + state.rain.intensity * 1500;
       if (s === "tin") {
+        // thin metal sheet: bright drumming wash + the sheet rings after each hit
         layers.rain.hissFilter.type = "highpass";
-        layers.rain.hissFilter.frequency.value = 1200;
+        layers.rain.hissFilter.frequency.value = 1000;
         layers.rain.hissFilter.Q.value = 0.3;
+        layers.rain.resonatorGain.gain.value = 0.7;
+        layers.rain.resonator.buffer = makeResonanceIR(ctx.sampleRate, 0.5, [1730, 2610, 3890], 4);
       } else if (s === "water") {
+        // deep water: low hollow wash, big slow plops, no patter
         layers.rain.hissFilter.type = "lowpass";
-        layers.rain.hissFilter.frequency.value = 900;
+        layers.rain.hissFilter.frequency.value = 750;
         layers.rain.hissFilter.Q.value = 0.4;
+        layers.rain.resonatorGain.gain.value = 0.25;
+        layers.rain.resonator.buffer = makeResonanceIR(ctx.sampleRate, 0.3, [240, 380], 6);
       } else if (s === "window") {
+        // glass from inside: closed-box coloration, dull steady taps
         layers.rain.hissFilter.type = "lowpass";
-        layers.rain.hissFilter.frequency.value = 1800;
+        layers.rain.hissFilter.frequency.value = 1600;
         layers.rain.hissFilter.Q.value = 0.6;
+        layers.rain.resonatorGain.gain.value = 0.2;
+        layers.rain.resonator.buffer = makeResonanceIR(ctx.sampleRate, 0.25, [520, 840], 8);
       } else {
+        // leaves: dry irregular mid rustle, no ring
         layers.rain.hissFilter.type = "bandpass";
         layers.rain.hissFilter.frequency.value = 1400;
         layers.rain.hissFilter.Q.value = 0.5;
+        layers.rain.resonatorGain.gain.value = 0;
       }
     } else {
       layers.rain.bus.gain.value = 0;
