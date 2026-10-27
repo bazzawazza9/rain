@@ -213,6 +213,8 @@
       </div>
       <div class="row"><span>Frequency</span><span class="value" id="thunder-val">0%</span></div>
       <input type="range" id="thunder-level" min="0" max="100" value="0" />
+      <div class="row"><span>Volume</span><span class="value" id="thunder-vol-val">80%</span></div>
+      <input type="range" id="thunder-vol" min="0" max="200" value="80" />
     </div>
 
     <div class="layer">
@@ -262,8 +264,8 @@
   const PRESETS = {
     drizzle: { rain: { on: true, level: 45, intensity: 0, surface: "leaves" }, wind: { on: false, level: 0 },  thunder: { on: false, level: 0 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
     downpour:{ rain: { on: true, level: 75, intensity: 2, surface: "water"  }, wind: { on: false, level: 0 },  thunder: { on: false, level: 0 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
-    storm:   { rain: { on: true, level: 80, intensity: 2, surface: "leaves" }, wind: { on: true,  level: 55 }, thunder: { on: true,  level: 50 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
-    cabin:   { rain: { on: true, level: 65, intensity: 1, surface: "tin"    }, wind: { on: true,  level: 35 }, thunder: { on: true,  level: 25 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
+    storm:   { rain: { on: true, level: 80, intensity: 2, surface: "leaves" }, wind: { on: true,  level: 55 }, thunder: { on: true,  level: 50, volume: 80 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
+    cabin:   { rain: { on: true, level: 65, intensity: 1, surface: "tin"    }, wind: { on: true,  level: 35 }, thunder: { on: true,  level: 25, volume: 80 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
     bedroom: { rain: { on: true, level: 50, intensity: 1, surface: "window" }, wind: { on: false, level: 0 },  thunder: { on: false, level: 0 }, fan: { on: true,  level: 40 }, ac: { on: true,  level: 35 }, master: 65 }
   };
   const INTENSITY_NAMES = ["Light", "Medium", "Heavy"];
@@ -283,7 +285,7 @@
   const state = {
     rain: { on: true, level: 70, intensity: 1, surface: "leaves" },
     wind: { on: false, level: 0 },
-    thunder: { on: false, level: 0 },
+    thunder: { on: false, level: 0, volume: 80 },
     fan: { on: false, level: 0 },
     ac: { on: false, level: 0 },
     master: 70
@@ -702,7 +704,7 @@
     }
 
     layers.wind.bus.gain.value = state.wind.on ? (state.wind.level / 100) * 0.9 : 0;
-    layers.thunder.bus.gain.value = state.thunder.on ? 1 : 0;
+    layers.thunder.bus.gain.value = state.thunder.on ? state.thunder.volume / 100 : 0;
     if (state.thunder.on && playing) layers.thunder.schedule(true);
     layers.fan.bus.gain.value = state.fan.on ? (state.fan.level / 100) * 0.8 : 0;
     layers.ac.bus.gain.value = state.ac.on ? (state.ac.level / 100) * 0.8 : 0;
@@ -723,6 +725,8 @@
     $("wind-val").textContent = state.wind.level + "%";
     $("thunder-level").value = state.thunder.level;
     $("thunder-val").textContent = state.thunder.level + "%";
+    $("thunder-vol").value = state.thunder.volume;
+    $("thunder-vol-val").textContent = Math.round(state.thunder.volume) + "%";
     $("fan-level").value = state.fan.level;
     $("fan-val").textContent = state.fan.level + "%";
     $("ac-level").value = state.ac.level;
@@ -767,6 +771,7 @@
   $("rain-intensity").addEventListener("input", (e) => { state.rain.intensity = +e.target.value; state.rain.on = true; applyAll(); });
   $("wind-level").addEventListener("input", (e) => { state.wind.level = +e.target.value; if (state.wind.level > 0) state.wind.on = true; applyAll(); });
   $("thunder-level").addEventListener("input", (e) => { state.thunder.level = +e.target.value; if (state.thunder.level > 0) state.thunder.on = true; applyAll(); });
+  $("thunder-vol").addEventListener("input", (e) => { state.thunder.volume = +e.target.value; if (state.thunder.volume > 0) state.thunder.on = true; applyAll(); });
   $("fan-level").addEventListener("input", (e) => { state.fan.level = +e.target.value; if (state.fan.level > 0) state.fan.on = true; applyAll(); });
   $("ac-level").addEventListener("input", (e) => { state.ac.level = +e.target.value; if (state.ac.level > 0) state.ac.on = true; applyAll(); });
   $("master").addEventListener("input", (e) => { state.master = +e.target.value; applyAll(); });
