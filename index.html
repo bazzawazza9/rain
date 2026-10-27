@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#16181c" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Rain</title>
+<style>
+  :root {
+    --fg: #e8e8e8;
+    --fg-dim: #8a8a8a;
+    --bg: #16181c;
+    --card: #1e2126;
+    --accent: #6fa8dc;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .app {
+    width: min(340px, 92vw);
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 24px 0;
+  }
+  .title {
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    font-weight: 400;
+  }
+  .play {
+    align-self: center;
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    border: 1px solid #333;
+    background: var(--card);
+    color: var(--fg);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, border-color 0.2s ease;
+  }
+  .play:hover { transform: scale(1.04); }
+  .play.playing { border-color: var(--accent); }
+  .play svg { width: 28px; height: 28px; fill: var(--fg); }
+
+  .chip-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .chip {
+    padding: 6px 14px;
+    border-radius: 16px;
+    border: 1px solid transparent;
+    background: var(--card);
+    color: var(--fg-dim);
+    font-size: 12px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .chip.active, .chip:hover { color: var(--fg); border-color: #333; }
+
+  .layers { display: flex; flex-direction: column; gap: 16px; }
+  .layer { display: flex; flex-direction: column; gap: 8px; }
+  .layer-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .layer-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fg);
+    font-size: 13px;
+  }
+  .toggle {
+    width: 34px;
+    height: 18px;
+    border-radius: 9px;
+    border: none;
+    background: #3a3d42;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--fg);
+    transition: transform 0.2s;
+  }
+  .toggle.on { background: var(--accent); }
+  .toggle.on::after { transform: translateX(16px); }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .row .value { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 2px;
+    background: #3a3d42;
+    border-radius: 1px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--fg);
+    cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border: none;
+    border-radius: 50%;
+    background: var(--fg);
+    cursor: pointer;
+  }
+  .status {
+    text-align: center;
+    font-size: 12px;
+    color: var(--fg-dim);
+    min-height: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  hr { border: none; border-top: 1px solid #2a2d32; margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1 class="title">Rain</h1>
+
+  <button class="play" id="play" aria-label="Play">
+    <svg id="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+  </button>
+
+  <div>
+    <div class="row" style="margin-bottom:8px"><span>Presets</span></div>
+    <div class="chip-row" id="presets">
+      <button class="chip" data-preset="drizzle">Drizzle</button>
+      <button class="chip active" data-preset="downpour">Downpour</button>
+      <button class="chip" data-preset="storm">Storm</button>
+      <button class="chip" data-preset="cabin">Cabin</button>
+      <button class="chip" data-preset="bedroom">Bedroom</button>
+    </div>
+  </div>
+
+  <div class="layers">
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-name">Rain</span>
+        <button class="toggle on" id="toggle-rain" aria-label="Toggle rain"></button>
+      </div>
+      <div class="row"><span>Level</span><span class="value" id="rain-val">70%</span></div>
+      <input type="range" id="rain-level" min="0" max="100" value="70" />
+      <div class="row"><span>Intensity</span><span class="value" id="rain-int-val">Medium</span></div>
+      <input type="range" id="rain-intensity" min="0" max="2" step="1" value="1" />
+      <div class="row"><span>Landing on</span></div>
+      <div class="chip-row" id="surfaces">
+        <button class="chip" data-surface="water">Water</button>
+        <button class="chip active" data-surface="leaves">Leaves</button>
+        <button class="chip" data-surface="tin">Tin roof</button>
+        <button class="chip" data-surface="window">Window</button>
+      </div>
+    </div>
+
+    <hr />
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-name">Wind</span>
+        <button class="toggle" id="toggle-wind" aria-label="Toggle wind"></button>
+      </div>
+      <div class="row"><span>Level</span><span class="value" id="wind-val">0%</span></div>
+      <input type="range" id="wind-level" min="0" max="100" value="0" />
+    </div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-name">Thunder</span>
+        <button class="toggle" id="toggle-thunder" aria-label="Toggle thunder"></button>
+      </div>
+      <div class="row"><span>Frequency</span><span class="value" id="thunder-val">0%</span></div>
+      <input type="range" id="thunder-level" min="0" max="100" value="0" />
+    </div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-name">Fan</span>
+        <button class="toggle" id="toggle-fan" aria-label="Toggle fan"></button>
+      </div>
+      <div class="row"><span>Level</span><span class="value" id="fan-val">0%</span></div>
+      <input type="range" id="fan-level" min="0" max="100" value="0" />
+    </div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-name">Air con</span>
+        <button class="toggle" id="toggle-ac" aria-label="Toggle air con"></button>
+      </div>
+      <div class="row"><span>Level</span><span class="value" id="ac-val">0%</span></div>
+      <input type="range" id="ac-level" min="0" max="100" value="0" />
+    </div>
+
+    <hr />
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-name">Master</span>
+        <span class="value" id="master-val">70%</span>
+      </div>
+      <input type="range" id="master" min="0" max="100" value="70" />
+    </div>
+
+    <div class="layer">
+      <div class="row"><span>Sleep timer</span></div>
+      <div class="chip-row" id="timers">
+        <button class="chip active" data-min="0">Off</button>
+        <button class="chip" data-min="15">15m</button>
+        <button class="chip" data-min="30">30m</button>
+        <button class="chip" data-min="60">60m</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+(() => {
+  const PRESETS = {
+    drizzle: { rain: { on: true, level: 45, intensity: 0, surface: "leaves" }, wind: { on: false, level: 0 },  thunder: { on: false, level: 0 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
+    downpour:{ rain: { on: true, level: 75, intensity: 2, surface: "water"  }, wind: { on: false, level: 0 },  thunder: { on: false, level: 0 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
+    storm:   { rain: { on: true, level: 80, intensity: 2, surface: "leaves" }, wind: { on: true,  level: 55 }, thunder: { on: true,  level: 50 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
+    cabin:   { rain: { on: true, level: 65, intensity: 1, surface: "tin"    }, wind: { on: true,  level: 35 }, thunder: { on: true,  level: 25 }, fan: { on: false, level: 0 }, ac: { on: false, level: 0 }, master: 70 },
+    bedroom: { rain: { on: true, level: 50, intensity: 1, surface: "window" }, wind: { on: false, level: 0 },  thunder: { on: false, level: 0 }, fan: { on: true,  level: 40 }, ac: { on: true,  level: 35 }, master: 65 }
+  };
+  const INTENSITY_NAMES = ["Light", "Medium", "Heavy"];
+  const PLAY_ICON = "M8 5v14l11-7z";
+  const PAUSE_ICON = "M6 5h4v14H6zM14 5h4v14h-4z";
+
+  const $ = (id) => document.getElementById(id);
+  const playBtn = $("play");
+  const icon = $("icon");
+  const status = $("status");
+
+  let ctx = null, masterGain = null, layers = {};
+  let playing = false;
+  let timerId = null, timerEndsAt = null, timerTick = null;
+  let dropletTimer = null, thunderTimer = null;
+
+  const state = {
+    rain: { on: true, level: 70, intensity: 1, surface: "leaves" },
+    wind: { on: false, level: 0 },
+    thunder: { on: false, level: 0 },
+    fan: { on: false, level: 0 },
+    ac: { on: false, level: 0 },
+    master: 70
+  };
+
+  function noiseBuffer(seconds) {
+    const len = Math.max(1, Math.floor(seconds * ctx.sampleRate));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  function fade(param, target, tc = 0.3) {
+    param.cancelScheduledValues(ctx.currentTime);
+    param.setTargetAtTime(target, ctx.currentTime, tc);
+  }
+
+  function setupAudio() {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = ctx.createGain();
+    masterGain.gain.value = 0;
+    masterGain.connect(ctx.destination);
+
+    // ---- Rain ----
+    const rainGain = ctx.createGain();
+    rainGain.gain.value = 0;
+    rainGain.connect(masterGain);
+
+    const hissSrc = ctx.createBufferSource();
+    hissSrc.buffer = noiseBuffer(2);
+    hissSrc.loop = true;
+    const hissFilter = ctx.createBiquadFilter();
+    hissFilter.type = "bandpass";
+    hissFilter.frequency.value = 1400;
+    hissFilter.Q.value = 0.5;
+    const rainLow = ctx.createBiquadFilter();
+    rainLow.type = "lowpass";
+    rainLow.frequency.value = 5000;
+    const hissGain = ctx.createGain();
+    hissGain.gain.value = 0.5;
+    hissSrc.connect(hissFilter).connect(rainLow).connect(hissGain).connect(rainGain);
+    hissSrc.start();
+
+    const dropletBus = ctx.createGain();
+    dropletBus.gain.value = 0.6;
+    dropletBus.connect(rainGain);
+
+    layers.rain = { bus: rainGain, hissGain, lowpass: rainLow, dropletBus };
+
+    dropletTimer = setInterval(() => {
+      if (!playing || !state.rain.on) return;
+      const now = ctx.currentTime;
+      const count = 1 + Math.floor(Math.random() * (1 + state.rain.intensity * 2));
+      for (let i = 0; i < count; i++) droplet(now + Math.random() * 1.2);
+    }, 900);
+
+    // ---- Wind ----
+    const windGain = ctx.createGain();
+    windGain.gain.value = 0;
+    windGain.connect(masterGain);
+    const windSrc = ctx.createBufferSource();
+    windSrc.buffer = noiseBuffer(4);
+    windSrc.loop = true;
+    const windFilter = ctx.createBiquadFilter();
+    windFilter.type = "lowpass";
+    windFilter.frequency.value = 480;
+    windFilter.Q.value = 0.4;
+    const windLfo = ctx.createOscillator();
+    windLfo.frequency.value = 0.13;
+    const windLfoGain = ctx.createGain();
+    windLfoGain.gain.value = 180;
+    windLfo.connect(windLfoGain).connect(windFilter.frequency);
+    windLfo.start();
+    const windAmp = ctx.createGain();
+    windAmp.gain.value = 1;
+    const windLfo2 = ctx.createOscillator();
+    windLfo2.frequency.value = 0.07;
+    const windLfo2Gain = ctx.createGain();
+    windLfo2Gain.gain.value = 0.25;
+    windLfo2.connect(windLfo2Gain).connect(windAmp.gain);
+    windLfo2.start();
+    windSrc.connect(windFilter).connect(windAmp).connect(windGain);
+    windSrc.start();
+    layers.wind = { bus: windGain };
+
+    // ---- Thunder ----
+    const thunderBus = ctx.createGain();
+    thunderBus.gain.value = 1;
+    thunderBus.connect(masterGain);
+    layers.thunder = { bus: thunderBus };
+    const scheduleThunder = () => {
+      if (thunderTimer) clearTimeout(thunderTimer);
+      const freq = state.thunder.level / 100;
+      if (!playing || !state.thunder.on || freq <= 0) return;
+      const delay = 8000 + Math.random() * 40000 * (1 - freq);
+      thunderTimer = setTimeout(() => {
+        if (playing && state.thunder.on) rumble();
+        scheduleThunder();
+      }, delay);
+    };
+    layers.thunder.schedule = scheduleThunder;
+
+    // ---- Fan: broadband whoosh with blade-rate chop ----
+    const fanGain = ctx.createGain();
+    fanGain.gain.value = 0;
+    fanGain.connect(masterGain);
+    const fanSrc = ctx.createBufferSource();
+    fanSrc.buffer = noiseBuffer(3);
+    fanSrc.loop = true;
+    const fanLow = ctx.createBiquadFilter();
+    fanLow.type = "lowpass";
+    fanLow.frequency.value = 900;
+    const chop = ctx.createOscillator();
+    chop.type = "sine";
+    chop.frequency.value = 16;
+    const chopGain = ctx.createGain();
+    chopGain.gain.value = 0.18;
+    const fanAmp = ctx.createGain();
+    fanAmp.gain.value = 0.82;
+    chop.connect(chopGain).connect(fanAmp.gain);
+    chop.start();
+    const hum = ctx.createOscillator();
+    hum.type = "triangle";
+    hum.frequency.value = 55;
+    const humGain = ctx.createGain();
+    humGain.gain.value = 0.05;
+    hum.connect(humGain).connect(fanGain);
+    hum.start();
+    fanSrc.connect(fanLow).connect(fanAmp).connect(fanGain);
+    fanSrc.start();
+    layers.fan = { bus: fanGain };
+
+    // ---- Air con: steady drone, gentle hiss on top ----
+    const acGain = ctx.createGain();
+    acGain.gain.value = 0;
+    acGain.connect(masterGain);
+    const acSrc = ctx.createBufferSource();
+    acSrc.buffer = noiseBuffer(3);
+    acSrc.loop = true;
+    const acBand = ctx.createBiquadFilter();
+    acBand.type = "bandpass";
+    acBand.frequency.value = 320;
+    acBand.Q.value = 0.35;
+    const acHiss = ctx.createBiquadFilter();
+    acHiss.type = "highpass";
+    acHiss.frequency.value = 3000;
+    const acHissGain = ctx.createGain();
+    acHissGain.gain.value = 0.12;
+    const drone = ctx.createOscillator();
+    drone.type = "sine";
+    drone.frequency.value = 60;
+    const droneGain = ctx.createGain();
+    droneGain.gain.value = 0.07;
+    drone.connect(droneGain).connect(acGain);
+    drone.start();
+    const sway = ctx.createOscillator();
+    sway.frequency.value = 0.05;
+    const swayGain = ctx.createGain();
+    swayGain.gain.value = 0.06;
+    sway.connect(swayGain).connect(acBand.frequency);
+    sway.start();
+    acSrc.connect(acBand).connect(acGain);
+    acSrc.connect(acHiss).connect(acHissGain).connect(acGain);
+    acSrc.start();
+    layers.ac = { bus: acGain };
+
+    applyMix(0);
+  }
+
+  // ---- Rain droplets per surface ----
+  function droplet(t) {
+    const bus = layers.rain.dropletBus;
+    const iv = state.rain.intensity;
+    if (state.rain.surface === "water") {
+      // plop: pitch-dropping sine
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      const f = 350 + Math.random() * 350;
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(f * 1.6, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.6, t + 0.07);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.035 + iv * 0.01, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      osc.connect(g).connect(bus);
+      osc.start(t); osc.stop(t + 0.12);
+    } else if (state.rain.surface === "tin") {
+      // metallic ping: two detuned partials + tick
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.045 + iv * 0.02, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      [1900, 3100].forEach((base, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = base + Math.random() * 400;
+        const og = ctx.createGain();
+        og.gain.value = i === 0 ? 1 : 0.5;
+        osc.connect(og).connect(g);
+        osc.start(t); osc.stop(t + 0.15);
+      });
+      const tick = ctx.createBufferSource();
+      tick.buffer = noiseBuffer(0.02);
+      const tf = ctx.createBiquadFilter();
+      tf.type = "highpass"; tf.frequency.value = 4000;
+      tick.connect(tf).connect(g);
+      tick.start(t); 
+      g.connect(bus);
+    } else if (state.rain.surface === "window") {
+      // glass tap: mid thud + resonant ring
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(700 + Math.random() * 250, t);
+      osc.frequency.exponentialRampToValueAtTime(500 + Math.random() * 150, t + 0.04);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.03, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+      osc.connect(g).connect(bus);
+      osc.start(t); osc.stop(t + 0.08);
+    } else {
+      // leaves: soft noise tap
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuffer(0.05);
+      const f = ctx.createBiquadFilter();
+      f.type = "bandpass";
+      f.frequency.value = 1200 + Math.random() * 1800;
+      f.Q.value = 1.2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.025 + iv * 0.01, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+      src.connect(f).connect(g).connect(bus);
+      src.start(t);
+    }
+  }
+
+  function rumble() {
+    const dur = 2.5 + Math.random() * 2.5;
+    const t = ctx.currentTime + 0.05;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(Math.ceil(dur) + 1);
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(120 + Math.random() * 80, t);
+    filter.frequency.exponentialRampToValueAtTime(45, t + dur);
+    filter.Q.value = 1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.9, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.4, t + dur * 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    src.connect(filter).connect(g);
+    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; g.connect(pan).connect(layers.thunder.bus); }
+    else g.connect(layers.thunder.bus);
+    src.start(t);
+    src.stop(t + dur + 0.1);
+  }
+
+  function applyMix(tc = 0.3) {
+    if (!ctx) return;
+    fade(masterGain.gain, playing ? state.master / 100 : 0, tc);
+
+    if (state.rain.on) {
+      layers.rain.bus.gain.value = state.rain.level / 100;
+      layers.rain.hissGain.gain.value = 0.25 + state.rain.intensity * 0.35;
+      layers.rain.dropletBus.gain.value = 0.2 + state.rain.intensity * 0.5;
+      layers.rain.lowpass.frequency.value = 4000 + state.rain.intensity * 1500;
+    } else {
+      layers.rain.bus.gain.value = 0;
+    }
+
+    layers.wind.bus.gain.value = state.wind.on ? (state.wind.level / 100) * 0.9 : 0;
+    layers.thunder.bus.gain.value = state.thunder.on ? 1 : 0;
+    if (state.thunder.on && playing) layers.thunder.schedule();
+    layers.fan.bus.gain.value = state.fan.on ? (state.fan.level / 100) * 0.8 : 0;
+    layers.ac.bus.gain.value = state.ac.on ? (state.ac.level / 100) * 0.8 : 0;
+  }
+
+  // ---- UI ----
+  function syncUI() {
+    $("toggle-rain").classList.toggle("on", state.rain.on);
+    $("toggle-wind").classList.toggle("on", state.wind.on);
+    $("toggle-thunder").classList.toggle("on", state.thunder.on);
+    $("toggle-fan").classList.toggle("on", state.fan.on);
+    $("toggle-ac").classList.toggle("on", state.ac.on);
+    $("rain-level").value = state.rain.level;
+    $("rain-val").textContent = state.rain.level + "%";
+    $("rain-intensity").value = state.rain.intensity;
+    $("rain-int-val").textContent = INTENSITY_NAMES[state.rain.intensity];
+    $("wind-level").value = state.wind.level;
+    $("wind-val").textContent = state.wind.level + "%";
+    $("thunder-level").value = state.thunder.level;
+    $("thunder-val").textContent = state.thunder.level + "%";
+    $("fan-level").value = state.fan.level;
+    $("fan-val").textContent = state.fan.level + "%";
+    $("ac-level").value = state.ac.level;
+    $("ac-val").textContent = state.ac.level + "%";
+    $("master").value = state.master;
+    $("master-val").textContent = state.master + "%";
+    document.querySelectorAll("#surfaces .chip").forEach((b) =>
+      b.classList.toggle("active", b.dataset.surface === state.rain.surface)
+    );
+    try { localStorage.setItem("rain-state", JSON.stringify(state)); } catch (e) {}
+  }
+
+  function applyAll() { syncUI(); applyMix(); }
+
+  function play() {
+    if (!ctx) setupAudio();
+    if (ctx.state === "suspended") ctx.resume();
+    playing = true;
+    playBtn.classList.add("playing");
+    icon.querySelector("path").setAttribute("d", PAUSE_ICON);
+    applyMix();
+    if (timerEndsAt) startTick();
+  }
+
+  function pause() {
+    playing = false;
+    playBtn.classList.remove("playing");
+    icon.querySelector("path").setAttribute("d", PLAY_ICON);
+    if (ctx) fade(masterGain.gain, 0, 0.3);
+    stopTick();
+  }
+
+  playBtn.addEventListener("click", () => (playing ? pause() : play()));
+
+  $("toggle-rain").addEventListener("click", () => { state.rain.on = !state.rain.on; applyAll(); });
+  $("toggle-wind").addEventListener("click", () => { state.wind.on = !state.wind.on; applyAll(); });
+  $("toggle-thunder").addEventListener("click", () => { state.thunder.on = !state.thunder.on; applyAll(); });
+  $("toggle-fan").addEventListener("click", () => { state.fan.on = !state.fan.on; applyAll(); });
+  $("toggle-ac").addEventListener("click", () => { state.ac.on = !state.ac.on; applyAll(); });
+
+  $("rain-level").addEventListener("input", (e) => { state.rain.level = +e.target.value; state.rain.on = true; applyAll(); });
+  $("rain-intensity").addEventListener("input", (e) => { state.rain.intensity = +e.target.value; state.rain.on = true; applyAll(); });
+  $("wind-level").addEventListener("input", (e) => { state.wind.level = +e.target.value; if (state.wind.level > 0) state.wind.on = true; applyAll(); });
+  $("thunder-level").addEventListener("input", (e) => { state.thunder.level = +e.target.value; if (state.thunder.level > 0) state.thunder.on = true; applyAll(); });
+  $("fan-level").addEventListener("input", (e) => { state.fan.level = +e.target.value; if (state.fan.level > 0) state.fan.on = true; applyAll(); });
+  $("ac-level").addEventListener("input", (e) => { state.ac.level = +e.target.value; if (state.ac.level > 0) state.ac.on = true; applyAll(); });
+  $("master").addEventListener("input", (e) => { state.master = +e.target.value; applyAll(); });
+
+  document.querySelectorAll("#surfaces .chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.rain.surface = btn.dataset.surface;
+      state.rain.on = true;
+      applyAll();
+    });
+  });
+
+  document.querySelectorAll("#presets .chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#presets .chip").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const p = PRESETS[btn.dataset.preset];
+      Object.assign(state.rain, p.rain);
+      Object.assign(state.wind, p.wind);
+      Object.assign(state.thunder, p.thunder);
+      Object.assign(state.fan, p.fan);
+      Object.assign(state.ac, p.ac);
+      state.master = p.master;
+      applyAll();
+    });
+  });
+
+  const timerBtns = document.querySelectorAll("#timers .chip");
+  timerBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      timerBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const min = Number(btn.dataset.min);
+      clearTimeout(timerId);
+      stopTick();
+      if (min > 0) {
+        timerEndsAt = Date.now() + min * 60 * 1000;
+        if (playing) startTick();
+      } else {
+        timerEndsAt = null;
+        status.textContent = "";
+      }
+    });
+  });
+
+  function startTick() {
+    stopTick();
+    timerTick = setInterval(() => {
+      const remaining = Math.max(0, timerEndsAt - Date.now());
+      if (remaining === 0) {
+        status.textContent = "";
+        pause();
+        timerEndsAt = null;
+        timerBtns.forEach((b) => b.classList.remove("active"));
+        timerBtns[0].classList.add("active");
+        return;
+      }
+      const m = Math.floor(remaining / 60000);
+      const s = Math.floor((remaining % 60000) / 1000);
+      status.textContent = `Stops in ${m}:${String(s).padStart(2, "0")}`;
+    }, 500);
+  }
+
+  function stopTick() { clearInterval(timerTick); timerTick = null; }
+
+  try {
+    const saved = localStorage.getItem("rain-state");
+    if (saved) {
+      const s = JSON.parse(saved);
+      ["rain", "wind", "thunder", "fan", "ac"].forEach((k) => { if (s[k]) Object.assign(state[k], s[k]); });
+      if (typeof s.master === "number") state.master = s.master;
+    }
+  } catch (e) {}
+  syncUI();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
