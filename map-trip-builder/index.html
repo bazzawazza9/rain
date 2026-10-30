@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Map Trip Builder</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%232563eb' d='M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="map"></div>
+
+<aside id="panel">
+  <header>
+    <h1>Trip Builder</h1>
+    <button id="panel-toggle" aria-label="Collapse panel" title="Collapse panel">&raquo;</button>
+  </header>
+  <p class="hint">Click anywhere on the map to drop a pin. Pins connect in the order you place them.</p>
+  <div id="stats">
+    <span id="stop-count">0 stops</span>
+    <span id="total-dist">0 km</span>
+  </div>
+  <ol id="stop-list"></ol>
+  <div class="actions">
+    <button id="fit-btn" disabled>Fit map to trip</button>
+    <button id="share-btn" disabled>Copy share link</button>
+    <button id="clear-btn" class="danger" disabled>Clear trip</button>
+  </div>
+</aside>
+
+<div id="empty-toast">Click on the map to place your first pin</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
